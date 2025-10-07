@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deadlock Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f3f4f6;
+      color: #111827;
+      text-align: center;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #1f2937;
+    }
+
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      margin: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #1e40af;
+    }
+
+    select {
+      padding: 5px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      margin: 5px;
+    }
+
+    .container {
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      padding: 20px;
+      max-width: 700px;
+      margin: 20px auto;
+      text-align: left;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 12px;
+      color: white;
+      margin: 3px;
+    }
+
+    .process {
+      background-color: #3b82f6;
+    }
+
+    .resource {
+      background-color: #10b981;
+    }
+
+    .edges {
+      margin-top: 10px;
+      background-color: #f9fafb;
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .result {
+      font-weight: bold;
+      text-align: center;
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    .deadlock {
+      color: #dc2626;
+    }
+
+    .no-deadlock {
+      color: #16a34a;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>💻 Deadlock Simulator</h1>
+  <div>
+    <button id="addProcess">Add Process</button>
+    <button id="addResource">Add Resource</button>
+    <button id="detectBtn" style="background-color:#16a34a;">Detect Deadlock</button>
+  </div>
+
+  <div class="container">
+    <h2>Processes</h2>
+    <div id="processes"></div>
+
+    <h2>Resources</h2>
+    <div id="resources"></div>
+
+    <h2>Add Edge</h2>
+    <select id="fromSelect"></select>
+    <select id="toSelect"></select>
+    <select id="typeSelect">
+      <option value="request">Request (P → R)</option>
+      <option value="allocation">Allocation (R → P)</option>
+    </select>
+    <button id="addEdgeBtn">Add Edge</button>
+
+    <h2>Edges</h2>
+    <div id="edgesList" class="edges"></div>
+
+    <div id="result" class="result"></div>
+  </div>
+
+  <script>
+    let processes = ["P1", "P2"];
+    let resources = ["R1", "R2"];
+    let edges = []; // {from, to, type: 'request' | 'allocation'}
+
+    const processDiv = document.getElementById("processes");
+    const resourceDiv = document.getElementById("resources");
+    const fromSelect = document.getElementById("fromSelect");
+    const toSelect = document.getElementById("toSelect");
+    const edgesList = document.getElementById("edgesList");
+    const resultDiv = document.getElementById("result");
+
+    function render() {
+      // Render processes
+      processDiv.innerHTML = processes.map(p => `<span class="badge process">${p}</span>`).join("");
+      // Render resources
+      resourceDiv.innerHTML = resources.map(r => `<span class="badge resource">${r}</span>`).join("");
+      // Populate dropdowns
+      const allNodes = [...processes, ...resources];
+      fromSelect.innerHTML = allNodes.map(n => `<option>${n}</option>`).join("");
+      toSelect.innerHTML = allNodes.map(n => `<option>${n}</option>`).join("");
+      // Render edges
+      edgesList.innerHTML = edges.map(e => 
+        `<div>${e.type === "request" ? "➡️" : "⬅️"} ${e.from} → ${e.to} (${e.type})</div>`
+      ).join("");
+    }
+
+    // Add process
+    document.getElementById("addProcess").onclick = () => {
+      processes.push(`P${processes.length + 1}`);
+      render();
+    };
+
+    // Add resource
+    document.getElementById("addResource").onclick = () => {
+      resources.push(`R${resources.length + 1}`);
+      render();
+    };
+
+    // Add edge
+    document.getElementById("addEdgeBtn").onclick = () => {
+      const from = fromSelect.value;
+      const to = toSelect.value;
+      const type = document.getElementById("typeSelect").value;
+      if (from && to && from !== to) {
+        edges.push({ from, to, type });
+        render();
+      }
+    };
+
+    // Detect deadlock (cycle detection in wait-for graph)
+    document.getElementById("detectBtn").onclick = () => {
+      const waitFor = {};
+      processes.forEach(p => waitFor[p] = new Set());
+
+      edges.forEach(e1 => {
+        if (e1.type === "request" && resources.includes(e1.to)) {
+          const res = e1.to;
+          edges.forEach(e2 => {
+            if (e2.type === "allocation" && e2.from === res) {
+              waitFor[e1.from].add(e2.to);
+            }
+          });
+        }
+      });
+
+      const visited = new Set();
+      const recStack = new Set();
+
+      function dfs(node) {
+        if (!visited.has(node)) {
+          visited.add(node);
+          recStack.add(node);
+          for (let nb of waitFor[node]) {
+            if (!visited.has(nb) && dfs(nb)) return true;
+            else if (recStack.has(nb)) return true;
+          }
+        }
+        recStack.delete(node);
+        return false;
+      }
+
+      let deadlockFound = false;
+      for (let p of processes) {
+        if (dfs(p)) {
+          deadlockFound = true;
+          break;
+        }
+      }
+
+      if (deadlockFound)
+        resultDiv.innerHTML = `<span class="deadlock">⚠️ Deadlock detected!</span>`;
+      else
+        resultDiv.innerHTML = `<span class="no-deadlock">✅ No deadlock detected.</span>`;
+    };
+
+    render();
+  </script>
+</body>
+</html>
